@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": ".",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    "strictNullChecks": true,
+    "types": ["node"],
+    "target": "ES2020",
+    "module": "CommonJS",
+    "lib": ["ES2020"],
+    "moduleResolution": "node",
+    "resolveJsonModule": true
+  },
+  "include": [
+    "nodes/**/*",
+    "credentials/**/*",
+    "*.ts"
+  ],
+  "exclude": [
+    "dist/**/*",
+    "node_modules/**/*",
+    "**/*.test.ts"
+  ]
+}

@@ -1,0 +1,127 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag to release (e.g., v0.1.0)'
+        required: true
+        type: string
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'pnpm'
+      
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      
+      - name: Run type check
+        run: pnpm run typecheck
+      
+      - name: Run lint
+        run: pnpm run lint
+      
+      - name: Run build
+        run: pnpm run build
+      
+      - name: Run tests
+        run: pnpm run dev:test
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: dist-release
+          path: dist/
+          retention-days: 1
+
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'pnpm'
+      
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prod
+      
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: dist-release
+          path: dist/
+      
+      - name: Verify package version matches tag
+        run: |
+          TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          
+          if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "❌ Tag version ($TAG_VERSION) doesn't match package.json version ($PACKAGE_VERSION)"
+            exit 1
+          fi
+          
+          echo "✅ Version verification passed: $PACKAGE_VERSION"
+      
+      - name: Publish to npm
+        run: pnpm publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body: |
+            ## Changes
+            
+            See [CHANGELOG.md](CHANGELOG.md) for detailed changes.
+            
+            ## Installation
+            
+            ```bash
+            npm install @berrycube/n8n-nodes-oauth2-enhanced
+            ```
+            
+            ## 🤖 This release was generated automatically
+          draft: false
+          prerelease: false

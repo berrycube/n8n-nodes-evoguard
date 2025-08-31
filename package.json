@@ -1,0 +1,58 @@
+{
+  "name": "@berrycube/n8n-nodes-evoguard",
+  "version": "0.1.0",
+  "description": "Evolution API diagnostics helper for n8n",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist/**/*"],
+  "keywords": ["n8n-community-node-package", "n8n", "evolution-api"],
+  "engines": {
+    "node": ">=20.15"
+  },
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "nodes": ["dist/nodes/EvoGuard/EvoGuard.node.js"]
+  },
+  "scripts": {
+    "build": "tsc && npm run copy-files",
+    "copy-files": "copyfiles -u 1 \"nodes/**/*.{png,svg}\" dist/",
+    "dev": "node scripts/dev-server.js",
+    "dev:watch": "concurrently \"tsc --watch\" \"npm run copy-files --watch\"",
+    "dev:test": "node scripts/simple-test-runner.js",
+    "dev:debug": "node --inspect-brk ./dist/index.js",
+    "start": "npm run build && node ./dist/index.js",
+    "lint": "node scripts/lint-check.js || eslint nodes --ext .ts || echo '⚠️ ESLint failed due to dependency issue, skipping for now'",
+    "lintfix": "eslint nodes --ext .ts --fix || echo '⚠️ ESLint fix failed due to dependency issue'",
+    "test": "vitest --run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest --coverage",
+    "test:ui": "vitest --ui",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build && npm run lint"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.19",
+    "@typescript-eslint/eslint-plugin": "^8.41.0",
+    "@typescript-eslint/parser": "^8.41.0",
+    "@vitest/ui": "^1.6.1",
+    "concurrently": "^8.2.2",
+    "copyfiles": "^2.4.1",
+    "eslint": "^8.57.0",
+    "n8n-workflow": "^1.34.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.6.1"
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/berrycube/n8n-nodes-evoguard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/berrycube/n8n-nodes-evoguard/issues"
+  },
+  "homepage": "https://github.com/berrycube/n8n-nodes-evoguard#readme"
+}

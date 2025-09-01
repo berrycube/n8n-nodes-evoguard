@@ -5,7 +5,6 @@ import {
   INodeTypeDescription,
   IHttpRequestMethods,
   NodeOperationError,
-  NodeConnectionType,
 } from 'n8n-workflow';
 
 export class EvoGuard implements INodeType {
@@ -18,8 +17,8 @@ export class EvoGuard implements INodeType {
     defaults: {
       name: 'EvoGuard',
     },
-    inputs: [{ type: NodeConnectionType.Main }],
-    outputs: [{ type: NodeConnectionType.Main }],
+    inputs: ['main'],
+    outputs: ['main'],
     properties: [
       {
         displayName: 'Operation',
@@ -164,7 +163,11 @@ export class EvoGuard implements INodeType {
                   uptime: 0,
                 },
                 error: error instanceof Error ? error.message : 'Health check failed',
-                recommendations: ['Check if Evolution API server is running', 'Verify API key is correct', 'Ensure network connectivity'],
+                recommendations: [
+                  'Check if Evolution API server is running',
+                  'Verify API key is correct', 
+                  'Ensure network connectivity'
+                ],
               };
             }
             break;

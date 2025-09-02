@@ -114,8 +114,9 @@ export class EvoGuard implements INodeType {
     const returnData: INodeExecutionData[] = [];
 
     for (let i = 0; i < items.length; i++) {
+      let operation = 'unknown';
       try {
-        const operation = this.getNodeParameter('operation', i) as string;
+        operation = this.getNodeParameter('operation', i) as string;
         const baseUrl = this.getNodeParameter('baseUrl', i) as string;
         const apiKey = this.getNodeParameter('apiKey', i) as string;
         const timeout = this.getNodeParameter('timeout', i) as number;

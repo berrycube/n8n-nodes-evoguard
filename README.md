@@ -1,5 +1,5 @@
 # n8n-nodes-evoguard
 
-Evolution API diagnostics helper for n8n
+Evolution API 诊断助手，适用于n8n
 
-> This repository is prepared to be used as a **GitHub Template**. Use the **Use this template** button in GitHub UI.
+> 此仓库准备用作 **GitHub模板**。请在GitHub界面中使用 **Use this template** 按钮。

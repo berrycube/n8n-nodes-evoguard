@@ -171,7 +171,7 @@ export class EvoGuard implements INodeType {
             }
             break;
 
-          case 'instanceStatus':
+          case 'instanceStatus': {
             const instanceName = this.getNodeParameter('instanceName', i) as string;
             try {
               const response = await this.helpers.request({
@@ -222,8 +222,9 @@ export class EvoGuard implements INodeType {
               };
             }
             break;
+          }
 
-          case 'monitorWebhooks':
+          case 'monitorWebhooks': {
             const webhookUrl = this.getNodeParameter('webhookUrl', i) as string;
             try {
               const testPayload = {
@@ -267,8 +268,9 @@ export class EvoGuard implements INodeType {
               };
             }
             break;
+          }
 
-          case 'qrStatus':
+          case 'qrStatus': {
             const qrInstanceName = this.getNodeParameter('instanceName', i) as string;
             try {
               const response = await this.helpers.request({
@@ -303,6 +305,7 @@ export class EvoGuard implements INodeType {
               };
             }
             break;
+          }
             
           default:
             throw new NodeOperationError(this.getNode(), `Unknown operation: ${operation}`);

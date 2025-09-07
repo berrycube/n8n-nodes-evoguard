@@ -4,7 +4,7 @@ import { EvoGuard } from './EvoGuard.node';
 // Mock the n8n-workflow module
 vi.mock('n8n-workflow', () => ({
   NodeOperationError: class extends Error {
-    constructor(node: any, error: Error | string, options?: any) {
+    constructor(_node: any, error: Error | string) {
       const message = typeof error === 'string' ? error : error.message;
       super(message);
       this.name = 'NodeOperationError';

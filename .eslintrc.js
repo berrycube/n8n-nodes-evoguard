@@ -1,7 +1,6 @@
 module.exports = {
   extends: [
     'eslint:recommended',
-    '@typescript-eslint/recommended',
   ],
   parser: '@typescript-eslint/parser',
   plugins: ['@typescript-eslint'],
@@ -13,7 +12,6 @@ module.exports = {
   parserOptions: {
     ecmaVersion: 2022,
     sourceType: 'module',
-    project: './tsconfig.json',
   },
   rules: {
     // n8n specific rules

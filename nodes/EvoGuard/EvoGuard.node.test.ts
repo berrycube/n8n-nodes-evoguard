@@ -65,7 +65,9 @@ describe('EvoGuard Node - Business Logic Tests', () => {
         .mockReturnValueOnce(30)
         .mockReturnValueOnce(false);
 
-      mockExecuteFunctions.helpers.request.mockRejectedValue(new Error('API request failed'));
+      const err: any = new Error('API request failed');
+      err.statusCode = 500;
+      mockExecuteFunctions.helpers.request.mockRejectedValue(err);
 
       const result = await evoGuard.execute.call(mockExecuteFunctions);
 
@@ -73,6 +75,7 @@ describe('EvoGuard Node - Business Logic Tests', () => {
       expect(result[0][0].json.success).toBe(false);
       expect(result[0][0].json.health.status).toBe('error');
       expect(result[0][0].json.error).toBe('API request failed');
+      expect(result[0][0].json.statusCode).toBe(500);
       expect(result[0][0].json.recommendations).toContain('Check if Evolution API server is running');
     });
 
@@ -239,8 +242,32 @@ describe('EvoGuard Node - Business Logic Tests', () => {
 
       expect(result[0][0].json.isReachable).toBe(false);
       expect(result[0][0].json.error).toBe('Connection timeout');
+      expect(result[0][0].json.statusCode).toBeUndefined();
       expect(result[0][0].json.recommendations).toContain('Check if webhook URL is accessible');
       expect(result[0][0].json.recommendations).toContain('Check firewall and network settings');
+    });
+
+    it('should capture statusCode and retryAfter on rate limiting', async () => {
+      mockExecuteFunctions.getNodeParameter
+        .mockReturnValueOnce('monitorWebhooks')
+        .mockReturnValueOnce('http://localhost:8080')
+        .mockReturnValueOnce('test-key')
+        .mockReturnValueOnce(30)
+        .mockReturnValueOnce(true)
+        .mockReturnValueOnce('https://webhook.test.com/endpoint');
+
+      const rateLimitError: any = new Error('Too Many Requests');
+      rateLimitError.statusCode = 429;
+      rateLimitError.headers = { 'retry-after': '120' };
+
+      mockExecuteFunctions.helpers.request.mockRejectedValue(rateLimitError);
+
+      const result = await evoGuard.execute.call(mockExecuteFunctions);
+
+      expect(result[0][0].json.isReachable).toBe(false);
+      expect(result[0][0].json.error).toBe('Too Many Requests');
+      expect(result[0][0].json.statusCode).toBe(429);
+      expect(result[0][0].json.retryAfter).toBe('120');
     });
 
     it('should respect timeout parameter in webhook test', async () => {

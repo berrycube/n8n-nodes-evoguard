@@ -156,12 +156,14 @@ export class EvoGuard implements INodeType {
                 serverInfo: includeDetails ? response : undefined,
               };
             } catch (error) {
+              const statusCode = (error as any)?.statusCode || (error as any)?.response?.status;
               result = {
                 success: false,
                 health: {
                   status: 'error',
                 },
                 error: error instanceof Error ? error.message : 'Health check failed',
+                statusCode,
                 recommendations: [
                   'Check if Evolution API server is running',
                   'Verify API key is correct',
@@ -210,11 +212,13 @@ export class EvoGuard implements INodeType {
                 details: includeDetails ? response : undefined,
               };
             } catch (error) {
+              const statusCode = (error as any)?.statusCode || (error as any)?.response?.status;
               result = {
                 instanceName,
                 connectionState: 'error',
                 isConnected: false,
                 error: error instanceof Error ? error.message : 'Instance check failed',
+                statusCode,
                 recommendations: [
                   'Check if instance exists',
                   'Verify instance name is correct',
@@ -256,10 +260,14 @@ export class EvoGuard implements INodeType {
                 response: includeDetails ? response : undefined,
               };
             } catch (error) {
+              const statusCode = (error as any)?.statusCode || (error as any)?.response?.status;
+              const retryAfter = (error as any)?.headers?.['retry-after'] || (error as any)?.response?.headers?.['retry-after'];
               result = {
                 webhookUrl,
                 isReachable: false,
                 error: error instanceof Error ? error.message : 'Webhook test failed',
+                statusCode,
+                retryAfter,
                 recommendations: [
                   'Check if webhook URL is accessible',
                   'Verify webhook endpoint is running',
@@ -294,10 +302,12 @@ export class EvoGuard implements INodeType {
                   : ['QR code not available - check if instance needs pairing'],
               };
             } catch (error) {
+              const statusCode = (error as any)?.statusCode || (error as any)?.response?.status;
               result = {
                 instanceName: qrInstanceName,
                 qrCodeAvailable: false,
                 error: error instanceof Error ? error.message : 'QR code check failed',
+                statusCode,
                 recommendations: [
                   'Check if instance exists and is in correct state',
                   'Verify instance is not already connected',

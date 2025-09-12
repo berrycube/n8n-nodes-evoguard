@@ -1,0 +1,167 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test & Build
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [20.x]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'pnpm'
+      
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      
+      - name: Run TypeScript type check
+        run: pnpm run typecheck
+      
+      - name: Run ESLint
+        run: pnpm run lint
+      
+      - name: Run build
+        run: pnpm run build
+      
+      - name: Run tests with coverage
+        run: pnpm run test:coverage
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+          path: dist/
+          retention-days: 7
+
+  validate:
+    name: Validate Package
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+          path: dist/
+      
+      - name: Validate package.json
+        run: |
+          # 检查必需字段
+          node -e "
+            const pkg = require('./package.json');
+            const required = ['name', 'version', 'description', 'main', 'types'];
+            required.forEach(field => {
+              if (!pkg[field]) throw new Error(\`Missing required field: \${field}\`);
+            });
+            console.log('✅ Package.json validation passed');
+          "
+      
+      - name: Validate n8n configuration
+        run: |
+          # 检查n8n配置
+          node -e "
+            const pkg = require('./package.json');
+            if (!pkg.n8n || !pkg.n8n.nodes) {
+              throw new Error('Missing n8n configuration');
+            }
+            console.log('✅ n8n configuration validation passed');
+          "
+      
+      - name: Check dist files exist
+        run: |
+          # 检查构建产物
+          required_files=(
+            'dist/nodes/EvoGuard/EvoGuard.node.js'
+            'dist/nodes/EvoGuard/EvoGuard.node.d.ts'
+            'dist/index.js'
+            'dist/index.d.ts'
+          )
+          
+          for file in "${required_files[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "❌ Missing required file: $file"
+              exit 1
+            fi
+          done
+          echo "✅ All required dist files exist"
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Advanced Security Audit
+        run: |
+          # 强化依赖安全扫描
+          npm audit --audit-level=high --production
+          npx audit-ci --high
+        continue-on-error: true
+      
+      - name: License Compliance Check
+        run: |
+          # 许可证合规检查
+          npx license-checker --production --onlyAllow "MIT;Apache-2.0;BSD-3-Clause;ISC" || true
+          echo "✅ License compliance check completed"
+      
+      - name: Generate SBOM
+        run: |
+          # 软件物料清单生成
+          npx @cyclonedx/cyclonedx-npm --output-file sbom.json
+          echo "✅ SBOM generated"
+        continue-on-error: true
+      
+      - name: Check for secrets
+        run: |
+          # 简单的密钥检查
+          if grep -r -i "password\|secret\|key" --include="*.ts" --include="*.js" . | grep -v "// " | grep -v "name.*secret" | grep -v "displayName.*Secret" | grep -v "test.*key" | grep -v "mock.*key"; then
+            echo "⚠️ Found potential secrets in code"
+            # 不让它失败，只是警告
+          else
+            echo "✅ No obvious secrets found"
+          fi

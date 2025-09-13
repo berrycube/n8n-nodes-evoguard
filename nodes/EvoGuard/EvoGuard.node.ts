@@ -3,6 +3,7 @@ import {
   INodeExecutionData,
   INodeType,
   INodeTypeDescription,
+  IHttpRequestMethods,
   NodeOperationError,
 } from 'n8n-workflow';
 
@@ -16,8 +17,8 @@ export class EvoGuard implements INodeType {
     defaults: {
       name: 'EvoGuard',
     },
-    inputs: [{ type: 'main' }],
-    outputs: [{ type: 'main' }],
+    inputs: ['main'],
+    outputs: ['main'],
     properties: [
       {
         displayName: 'Operation',
@@ -32,7 +33,7 @@ export class EvoGuard implements INodeType {
           },
           {
             name: 'Instance Status',
-            value: 'instanceStatus',
+            value: 'instanceStatus', 
             description: 'Get status of WhatsApp instances',
           },
           {
@@ -55,7 +56,7 @@ export class EvoGuard implements INodeType {
         type: 'string',
         default: 'http://localhost:8080',
         required: true,
-        description: 'Base URL of the Evolution API server',
+        description: 'Evolution API server base URL',
       },
       {
         displayName: 'API Key',
@@ -106,6 +107,27 @@ export class EvoGuard implements INodeType {
         default: true,
         description: 'Include detailed response information',
       },
+      {
+        displayName: 'Additional Headers',
+        name: 'headersUi',
+        type: 'fixedCollection',
+        placeholder: 'Add Header',
+        default: {},
+        options: [
+          {
+            displayName: 'Header',
+            name: 'parameter',
+            type: 'collection',
+            placeholder: 'Add Header',
+            default: {},
+            options: [
+              { displayName: 'Name', name: 'name', type: 'string', default: '' },
+              { displayName: 'Value', name: 'value', type: 'string', default: '' },
+            ],
+          },
+        ],
+        description: 'Optional headers for diagnostics (e.g., trace IDs)',
+      },
     ],
   };
 
@@ -114,160 +136,178 @@ export class EvoGuard implements INodeType {
     const returnData: INodeExecutionData[] = [];
 
     for (let i = 0; i < items.length; i++) {
-      let operation = 'unknown';
+      const operation = this.getNodeParameter('operation', i) as string;
+      const baseUrl = this.getNodeParameter('baseUrl', i) as string;
+      const apiKey = this.getNodeParameter('apiKey', i) as string;
+      const timeout = this.getNodeParameter('timeout', i) as number;
+      const includeDetails = this.getNodeParameter('includeDetails', i) as boolean;
+
       try {
-        operation = this.getNodeParameter('operation', i) as string;
-        const baseUrl = this.getNodeParameter('baseUrl', i) as string;
-        const apiKey = this.getNodeParameter('apiKey', i) as string;
-        const timeout = this.getNodeParameter('timeout', i) as number;
-        const includeDetails = this.getNodeParameter('includeDetails', i) as boolean;
-
         let result: any = {};
-
+        
         switch (operation) {
           case 'healthCheck':
             try {
-              const response = await this.helpers.request({
-                method: 'GET',
+              const headersUi = (this.getNodeParameter('headersUi', i, {}) as any);
+              const addHeaders = Array.isArray(headersUi?.parameter) ? headersUi.parameter : [];
+              const options = {
+                method: 'GET' as IHttpRequestMethods,
                 url: `${baseUrl}/manager/info`,
                 headers: {
                   'Authorization': `Bearer ${apiKey}`,
                   'Content-Type': 'application/json',
                 },
-                json: true,
                 timeout: timeout * 1000,
-              });
-
-              const recommendations: string[] = [];
-              if (response.instances && response.instances.length === 0) {
-                recommendations.push('No WhatsApp instances found');
-                recommendations.push('Consider creating instances for WhatsApp connections');
-              } else {
-                recommendations.push('Evolution API server health looks good');
+                json: true,
+              };
+              for (const h of addHeaders) {
+                if (h?.name) (options.headers as any)[String(h.name)] = h?.value ?? '';
               }
 
+              const response = await this.helpers.request(options);
+              
               result = {
-                success: true,
                 health: {
-                  status: 'online',
+                  status: response ? 'online' : 'offline',
                   instances: response.instances || [],
+                  uptime: response.uptime || 0,
+                  version: response.version,
+                  memory: response.memory,
                 },
-                recommendations,
                 serverInfo: includeDetails ? response : undefined,
+                recommendations: response 
+                  ? (response.instances && response.instances.length === 0 
+                    ? ['No WhatsApp instances found', 'Consider creating instances for WhatsApp connections']
+                    : ['Evolution API server health looks good'])
+                  : ['Evolution API server appears to be offline', 'Check server logs and restart if necessary'],
               };
             } catch (error) {
-              const statusCode = (error as any)?.statusCode || (error as any)?.response?.status;
               result = {
-                success: false,
-                health: {
+                health: { 
                   status: 'error',
+                  instances: [],
+                  uptime: 0,
                 },
                 error: error instanceof Error ? error.message : 'Health check failed',
-                statusCode,
                 recommendations: [
                   'Check if Evolution API server is running',
-                  'Verify API key is correct',
-                  'Check network connectivity',
+                  'Verify API key is correct', 
+                  'Ensure network connectivity'
                 ],
               };
             }
             break;
-
-          case 'instanceStatus': {
+            
+          case 'instanceStatus':
             const instanceName = this.getNodeParameter('instanceName', i) as string;
             try {
-              const response = await this.helpers.request({
-                method: 'GET',
-                url: `${baseUrl}/instance/fetchInstances?instanceName=${instanceName}`,
+              const headersUi = (this.getNodeParameter('headersUi', i, {}) as any);
+              const addHeaders = Array.isArray(headersUi?.parameter) ? headersUi.parameter : [];
+              const options = {
+                method: 'GET' as IHttpRequestMethods,
+                url: `${baseUrl}/instance/connectionState/${instanceName}`,
                 headers: {
                   'Authorization': `Bearer ${apiKey}`,
                   'Content-Type': 'application/json',
                 },
-                json: true,
                 timeout: timeout * 1000,
-              });
-
-              const connectionStatus = response.instance?.connectionStatus || 'unknown';
-              const isConnected = connectionStatus === 'open';
-
-              const recommendations: string[] = [];
-              if (isConnected) {
-                recommendations.push('Instance is connected and ready');
-              } else if (connectionStatus === 'close') {
-                recommendations.push('Instance is disconnected');
-                recommendations.push('Generate new QR code to reconnect');
-              } else if (connectionStatus === 'connecting') {
-                recommendations.push('Instance is connecting');
-                recommendations.push('Wait for connection to complete');
-              } else {
-                recommendations.push('Instance status is unknown');
-                recommendations.push('Check instance configuration');
+                json: true,
+              };
+              for (const h of addHeaders) {
+                if (h?.name) (options.headers as any)[String(h.name)] = h?.value ?? '';
               }
 
+              const response = await this.helpers.request(options);
+              
               result = {
                 instanceName,
-                connectionState: connectionStatus,
-                isConnected,
-                recommendations,
+                connectionState: response.instance?.connectionStatus || 'unknown',
+                isConnected: response.instance?.connectionStatus === 'open',
                 details: includeDetails ? response : undefined,
+                recommendations: response.instance?.connectionStatus === 'open'
+                  ? ['Instance is connected and ready']
+                  : response.instance?.connectionStatus === 'close'
+                  ? ['Instance is disconnected', 'Generate new QR code to reconnect']
+                  : response.instance?.connectionStatus === 'connecting'
+                  ? ['Instance is connecting', 'Wait for connection to complete']
+                  : ['Instance status is unknown', 'Check instance configuration'],
               };
             } catch (error) {
-              const statusCode = (error as any)?.statusCode || (error as any)?.response?.status;
               result = {
                 instanceName,
                 connectionState: 'error',
                 isConnected: false,
                 error: error instanceof Error ? error.message : 'Instance check failed',
-                statusCode,
-                recommendations: [
-                  'Check if instance exists',
-                  'Verify instance name is correct',
-                ],
+                recommendations: ['Check if instance exists', 'Verify instance name is correct'],
               };
             }
             break;
-          }
-
-          case 'monitorWebhooks': {
+            
+          case 'monitorWebhooks':
             const webhookUrl = this.getNodeParameter('webhookUrl', i) as string;
             try {
               const testPayload = {
                 event: 'evoguard.test',
-                timestamp: new Date().toISOString(),
                 data: {
-                  message: 'EvoGuard webhook connectivity test',
-                  instance: 'test-instance'
-                }
-              };
-
-              const response = await this.helpers.request({
-                method: 'POST',
-                url: webhookUrl,
-                headers: {
-                  'Content-Type': 'application/json',
-                  'User-Agent': 'EvoGuard/1.0',
+                  timestamp: new Date().toISOString(),
+                  test: true,
                 },
+              };
+              const headersUi = (this.getNodeParameter('headersUi', i, {}) as any);
+              const addHeaders = Array.isArray(headersUi?.parameter) ? headersUi.parameter : [];
+              const baseHeaders: Record<string, string> = {
+                'Content-Type': 'application/json',
+                'User-Agent': 'EvoGuard/1.0',
+              };
+              for (const h of addHeaders) {
+                if (h?.name) baseHeaders[String(h.name)] = h?.value ?? '';
+              }
+
+              const reqOptions = () => ({
+                method: 'POST' as IHttpRequestMethods,
+                url: webhookUrl,
+                headers: baseHeaders,
                 body: testPayload,
-                json: true,
                 timeout: timeout * 1000,
+                json: true,
               });
 
+              let response: any;
+              let attempt = 0;
+              const maxAttempts = 3;
+              while (attempt < maxAttempts) {
+                try {
+                  response = await this.helpers.request(reqOptions());
+                  break;
+                } catch (err: any) {
+                  const status = err?.statusCode || err?.response?.status;
+                  const retryAfter = err?.headers?.['retry-after'] || err?.response?.headers?.['retry-after'];
+                  if (status === 429 && retryAfter && attempt < maxAttempts - 1) {
+                    const sec = parseInt(Array.isArray(retryAfter) ? retryAfter[0] : retryAfter, 10);
+                    const delayMs = Math.min((Number.isNaN(sec) ? 1 : sec) * 1000, 30000);
+                    await new Promise(r => setTimeout(r, delayMs));
+                    attempt++;
+                    continue;
+                  }
+                  throw err;
+                }
+              }
+              
               result = {
                 webhookUrl,
                 isReachable: true,
+                responseTime: new Date().toISOString(),
                 statusCode: response.statusCode || 200,
-                recommendations: ['Webhook is responding normally'],
                 response: includeDetails ? response : undefined,
+                recommendations: ['Webhook is responding normally'],
               };
             } catch (error) {
-              const statusCode = (error as any)?.statusCode || (error as any)?.response?.status;
-              const retryAfter = (error as any)?.headers?.['retry-after'] || (error as any)?.response?.headers?.['retry-after'];
               result = {
                 webhookUrl,
                 isReachable: false,
                 error: error instanceof Error ? error.message : 'Webhook test failed',
-                statusCode,
-                retryAfter,
+                statusCode: (error as any)?.statusCode || (error as any)?.response?.status,
+                retryAfter: (error as any)?.headers?.['retry-after'] || (error as any)?.response?.headers?.['retry-after'],
                 recommendations: [
                   'Check if webhook URL is accessible',
                   'Verify webhook endpoint is running',
@@ -276,22 +316,28 @@ export class EvoGuard implements INodeType {
               };
             }
             break;
-          }
-
-          case 'qrStatus': {
+            
+          case 'qrStatus':
             const qrInstanceName = this.getNodeParameter('instanceName', i) as string;
             try {
-              const response = await this.helpers.request({
-                method: 'GET',
-                url: `${baseUrl}/instance/connect/${qrInstanceName}`,
+              const headersUi = (this.getNodeParameter('headersUi', i, {}) as any);
+              const addHeaders = Array.isArray(headersUi?.parameter) ? headersUi.parameter : [];
+              const options = {
+                method: 'GET' as IHttpRequestMethods,
+                url: `${baseUrl}/instance/qrcode/${qrInstanceName}`,
                 headers: {
                   'Authorization': `Bearer ${apiKey}`,
                   'Content-Type': 'application/json',
                 },
-                json: true,
                 timeout: timeout * 1000,
-              });
+                json: true,
+              };
+              for (const h of addHeaders) {
+                if (h?.name) (options.headers as any)[String(h.name)] = h?.value ?? '';
+              }
 
+              const response = await this.helpers.request(options);
+              
               result = {
                 instanceName: qrInstanceName,
                 qrCodeAvailable: !!response.qrcode,
@@ -302,12 +348,10 @@ export class EvoGuard implements INodeType {
                   : ['QR code not available - check if instance needs pairing'],
               };
             } catch (error) {
-              const statusCode = (error as any)?.statusCode || (error as any)?.response?.status;
               result = {
                 instanceName: qrInstanceName,
                 qrCodeAvailable: false,
                 error: error instanceof Error ? error.message : 'QR code check failed',
-                statusCode,
                 recommendations: [
                   'Check if instance exists and is in correct state',
                   'Verify instance is not already connected',
@@ -315,7 +359,6 @@ export class EvoGuard implements INodeType {
               };
             }
             break;
-          }
             
           default:
             throw new NodeOperationError(this.getNode(), `Unknown operation: ${operation}`);
@@ -353,4 +396,5 @@ export class EvoGuard implements INodeType {
 
     return [returnData];
   }
+
 }

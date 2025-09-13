@@ -107,6 +107,27 @@ export class EvoGuard implements INodeType {
         default: true,
         description: 'Include detailed response information',
       },
+      {
+        displayName: 'Additional Headers',
+        name: 'headersUi',
+        type: 'fixedCollection',
+        placeholder: 'Add Header',
+        default: {},
+        options: [
+          {
+            displayName: 'Header',
+            name: 'parameter',
+            type: 'collection',
+            placeholder: 'Add Header',
+            default: {},
+            options: [
+              { displayName: 'Name', name: 'name', type: 'string', default: '' },
+              { displayName: 'Value', name: 'value', type: 'string', default: '' },
+            ],
+          },
+        ],
+        description: 'Optional headers for diagnostics (e.g., trace IDs)',
+      },
     ],
   };
 
@@ -127,6 +148,8 @@ export class EvoGuard implements INodeType {
         switch (operation) {
           case 'healthCheck':
             try {
+              const headersUi = (this.getNodeParameter('headersUi', i, {}) as any);
+              const addHeaders = Array.isArray(headersUi?.parameter) ? headersUi.parameter : [];
               const options = {
                 method: 'GET' as IHttpRequestMethods,
                 url: `${baseUrl}/manager/info`,
@@ -137,6 +160,9 @@ export class EvoGuard implements INodeType {
                 timeout: timeout * 1000,
                 json: true,
               };
+              for (const h of addHeaders) {
+                if (h?.name) (options.headers as any)[String(h.name)] = h?.value ?? '';
+              }
 
               const response = await this.helpers.request(options);
               
@@ -175,6 +201,8 @@ export class EvoGuard implements INodeType {
           case 'instanceStatus':
             const instanceName = this.getNodeParameter('instanceName', i) as string;
             try {
+              const headersUi = (this.getNodeParameter('headersUi', i, {}) as any);
+              const addHeaders = Array.isArray(headersUi?.parameter) ? headersUi.parameter : [];
               const options = {
                 method: 'GET' as IHttpRequestMethods,
                 url: `${baseUrl}/instance/connectionState/${instanceName}`,
@@ -185,6 +213,9 @@ export class EvoGuard implements INodeType {
                 timeout: timeout * 1000,
                 json: true,
               };
+              for (const h of addHeaders) {
+                if (h?.name) (options.headers as any)[String(h.name)] = h?.value ?? '';
+              }
 
               const response = await this.helpers.request(options);
               
@@ -222,20 +253,45 @@ export class EvoGuard implements INodeType {
                   test: true,
                 },
               };
+              const headersUi = (this.getNodeParameter('headersUi', i, {}) as any);
+              const addHeaders = Array.isArray(headersUi?.parameter) ? headersUi.parameter : [];
+              const baseHeaders: Record<string, string> = {
+                'Content-Type': 'application/json',
+                'User-Agent': 'EvoGuard/1.0',
+              };
+              for (const h of addHeaders) {
+                if (h?.name) baseHeaders[String(h.name)] = h?.value ?? '';
+              }
 
-              const options = {
+              const reqOptions = () => ({
                 method: 'POST' as IHttpRequestMethods,
                 url: webhookUrl,
-                headers: {
-                  'Content-Type': 'application/json',
-                  'User-Agent': 'EvoGuard/1.0',
-                },
+                headers: baseHeaders,
                 body: testPayload,
                 timeout: timeout * 1000,
                 json: true,
-              };
+              });
 
-              const response = await this.helpers.request(options);
+              let response: any;
+              let attempt = 0;
+              const maxAttempts = 3;
+              while (attempt < maxAttempts) {
+                try {
+                  response = await this.helpers.request(reqOptions());
+                  break;
+                } catch (err: any) {
+                  const status = err?.statusCode || err?.response?.status;
+                  const retryAfter = err?.headers?.['retry-after'] || err?.response?.headers?.['retry-after'];
+                  if (status === 429 && retryAfter && attempt < maxAttempts - 1) {
+                    const sec = parseInt(Array.isArray(retryAfter) ? retryAfter[0] : retryAfter, 10);
+                    const delayMs = Math.min((Number.isNaN(sec) ? 1 : sec) * 1000, 30000);
+                    await new Promise(r => setTimeout(r, delayMs));
+                    attempt++;
+                    continue;
+                  }
+                  throw err;
+                }
+              }
               
               result = {
                 webhookUrl,
@@ -250,6 +306,8 @@ export class EvoGuard implements INodeType {
                 webhookUrl,
                 isReachable: false,
                 error: error instanceof Error ? error.message : 'Webhook test failed',
+                statusCode: (error as any)?.statusCode || (error as any)?.response?.status,
+                retryAfter: (error as any)?.headers?.['retry-after'] || (error as any)?.response?.headers?.['retry-after'],
                 recommendations: [
                   'Check if webhook URL is accessible',
                   'Verify webhook endpoint is running',
@@ -262,6 +320,8 @@ export class EvoGuard implements INodeType {
           case 'qrStatus':
             const qrInstanceName = this.getNodeParameter('instanceName', i) as string;
             try {
+              const headersUi = (this.getNodeParameter('headersUi', i, {}) as any);
+              const addHeaders = Array.isArray(headersUi?.parameter) ? headersUi.parameter : [];
               const options = {
                 method: 'GET' as IHttpRequestMethods,
                 url: `${baseUrl}/instance/qrcode/${qrInstanceName}`,
@@ -272,6 +332,9 @@ export class EvoGuard implements INodeType {
                 timeout: timeout * 1000,
                 json: true,
               };
+              for (const h of addHeaders) {
+                if (h?.name) (options.headers as any)[String(h.name)] = h?.value ?? '';
+              }
 
               const response = await this.helpers.request(options);
               

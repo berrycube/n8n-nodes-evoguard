@@ -240,6 +240,7 @@ describe('EvoGuard Node - Business Logic Tests', () => {
 
       expect(result[0][0].json.isReachable).toBe(false);
       expect(result[0][0].json.error).toBe('Connection timeout');
+      expect(result[0][0].json.statusCode).toBeUndefined();
       expect(result[0][0].json.recommendations).toContain('Check if webhook URL is accessible');
       expect(result[0][0].json.recommendations).toContain('Check firewall and network settings');
     });
@@ -259,6 +260,37 @@ describe('EvoGuard Node - Business Logic Tests', () => {
 
       const requestCall = mockExecuteFunctions.helpers.request.mock.calls[0][0];
       expect(requestCall.timeout).toBe(45000); // 45 seconds in milliseconds
+    });
+  });
+
+  describe('Monitor Webhooks Retry on 429', () => {
+    it('should honor retry-after and succeed after retry', async () => {
+      mockExecuteFunctions.getNodeParameter
+        .mockReturnValueOnce('monitorWebhooks')
+        .mockReturnValueOnce('http://localhost:8080')
+        .mockReturnValueOnce('test-key')
+        .mockReturnValueOnce(30)
+        .mockReturnValueOnce(true)
+        .mockReturnValueOnce('https://webhook.test.com/endpoint');
+
+      const rateErr: any = new Error('Too Many Requests');
+      rateErr.statusCode = 429;
+      rateErr.headers = { 'retry-after': '1' };
+
+      mockExecuteFunctions.helpers.request
+        .mockRejectedValueOnce(rateErr)
+        .mockRejectedValueOnce(rateErr)
+        .mockResolvedValueOnce({ statusCode: 200, ok: true });
+
+      vi.useFakeTimers();
+      const execPromise = evoGuard.execute.call(mockExecuteFunctions);
+      await vi.runAllTimersAsync();
+      const result = await execPromise;
+      vi.useRealTimers();
+
+      expect(result[0][0].json.isReachable).toBe(true);
+      expect(result[0][0].json.statusCode).toBe(200);
+      expect(mockExecuteFunctions.helpers.request).toHaveBeenCalledTimes(3);
     });
   });
 
